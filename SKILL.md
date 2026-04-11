@@ -125,5 +125,5 @@ exit 0
 3. `~/.claude/settings.json`의 `hooks.SessionEnd`에 훅 미등록이면 등록 (기존 설정과 머지):
 
 ```json
-{"type": "command", "command": "~/.claude/hooks/work-log-session-end.sh"}
+{"matcher": "", "hooks": [{"type": "command", "command": "~/.claude/hooks/work-log-session-end.sh"}]}
 ```
