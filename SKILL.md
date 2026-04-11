@@ -15,6 +15,8 @@ description: Use when logging work to Supabase, invoked manually via /work-log o
 4. 중복 체크
 5. 저장
 
+> **일일 리뷰 모드**: 사용자가 "오늘 작업 전부 로그", "전체 프로젝트 로그" 등 여러 프로젝트를 요청하면 Step 2에서 모든 프로젝트를 탐색하고, Step 3~5를 프로젝트별로 반복한다.
+
 ## Step 1: 환경변수 확인
 
 `SUPABASE_URL`과 `SUPABASE_KEY` 환경변수를 확인한다.
@@ -34,6 +36,8 @@ echo "$SETTINGS" | jq --arg url "$URL" --arg key "$KEY" '.env.SUPABASE_URL = $ur
 
 ## Step 2: 프로젝트 식별
 
+**우선순위 1 — 현재 디렉토리가 git repo인 경우:**
+
 ```bash
 git remote get-url origin 2>/dev/null
 ```
@@ -44,7 +48,24 @@ git remote get-url origin 2>/dev/null
 - SSH: `git@github.com:owner/repo.git` → `owner/repo`
 - GitLab/Bitbucket 등도 동일 패턴
 
-`origin`이 없으면 첫 번째 remote 사용. remote가 아예 없으면 사용자에게 프로젝트명 질문.
+`origin`이 없으면 첫 번째 remote 사용.
+
+**우선순위 2 — 현재 디렉토리가 git repo가 아닌 경우:**
+
+하위 디렉토리에서 git repo를 탐색한다:
+
+```bash
+for dir in */; do
+  if [ -d "$dir/.git" ]; then
+    remote=$(git -C "$dir" remote get-url origin 2>/dev/null)
+    [ -n "$remote" ] && echo "$dir -> $remote"
+  fi
+done
+```
+
+발견된 각 프로젝트에 대해 오늘 날짜 커밋(`git log --after`), 미커밋 변경사항(`git diff --stat`, `git status`), 파일 수정시각(`stat`)을 확인하여 **오늘 실제로 작업이 있었던 프로젝트만** 필터링한다.
+
+**우선순위 3** — remote가 아예 없으면 사용자에게 프로젝트명 질문.
 
 ## Step 3: 작업 요약 작성
 
@@ -53,7 +74,7 @@ git remote get-url origin 2>/dev/null
 - **category**: 다음 중 하나 (영어 고정)
   - `Feature`, `Bugfix`, `Refactor`, `Docs`, `Test`, `Chore`, `Research`, `Review`
 - **summary**: 4-5줄 분량의 작업 요약 (**항상 한국어**)
-- **user_id**: `git config user.email` 결과
+- **user_id**: `git config user.email` 결과. 미설정 시 사용자에게 이메일 질문 후 `git config --global user.email`로 설정
 - **ref_type** (선택): 관련 참조가 있으면 `pr`, `issue`, `commit` 중 하나
 - **ref_number** (선택): 참조 번호 (예: PR #42 → `ref_type='pr', ref_number=42`)
 
@@ -95,8 +116,16 @@ curl -s -o /tmp/work-log-response.json -w "%{http_code}" -X POST "${SUPABASE_URL
 - `jq` 필요 (훅 스크립트에서 JSON 파싱에 사용). 설치 확인:
 
 ```bash
-command -v jq >/dev/null 2>&1 || echo "jq가 설치되어 있지 않습니다. brew install jq 또는 apt install jq로 설치해주세요."
+command -v jq >/dev/null 2>&1 || echo "jq 미설치"
 ```
+
+설치 방법 (우선순위 순):
+1. 패키지 매니저: `brew install jq` / `apt install jq`
+2. sudo 없이 바이너리 직접 설치:
+```bash
+curl -sL https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64 -o ~/.local/bin/jq && chmod +x ~/.local/bin/jq
+```
+> `~/.local/bin`이 PATH에 없으면 `export PATH="$HOME/.local/bin:$PATH"`를 `~/.bashrc`에 추가
 
 ## 첫 실행 시 추가 설정
 
